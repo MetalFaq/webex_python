@@ -17,7 +17,7 @@ def main():
         print("No token provided. Exiting.")
         return
 
-    api = WebexAPI(access_token=bot_token)
+    api = WebexAPI(access_token=bot_token) 
     
     # Get Bot Identity
     try:
