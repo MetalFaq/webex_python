@@ -1,7 +1,14 @@
 import os
 import time
 import datetime
+from dotenv import load_dotenv
 from webexpythonsdk import WebexAPI, ApiError
+
+# Load environment variables from .env if present
+load_dotenv()
+
+# ADK agent integration
+from adk_integration import get_agent_response, ensure_initialized
 
 def main():
     # 1. Authentication
@@ -29,6 +36,11 @@ def main():
         print(f"Authentication failed: {e}")
         return
 
+    # Initialize ADK agent (non-interactive; requires GOOGLE_API_KEY in env)
+    agent_ready = ensure_initialized(non_interactive=True)
+    if not agent_ready:
+        print("Warning: ADK agent not initialized (set GOOGLE_API_KEY to enable agent replies).")
+
     # Track processed message IDs to avoid duplicates
     # Initial state: we don't know past messages, so we might want to ignore old ones 
     # or just start fresh. For simplicity, let's fetch the latest message first and ignore it/them.
@@ -43,6 +55,9 @@ def main():
         pass
 
     poll_interval = 3 # seconds
+    startup_utc = datetime.datetime.utcnow()
+
+    first_run = True
 
     while True:
         try:
@@ -64,6 +79,11 @@ def main():
                 for msg in reversed(room_msgs):
                     if msg.id in processed_message_ids:
                         continue
+
+                    # On first run, just mark existing messages as processed (avoid replying to history)
+                    if first_run:
+                        processed_message_ids.add(msg.id)
+                        continue
                     
                     # Mark as processed
                     processed_message_ids.add(msg.id)
@@ -77,13 +97,23 @@ def main():
                     print(f"From: {msg.personEmail}")
                     print(f"Text: {msg.text}")
                     
-                    # --- Reply Logic ---
-                    reply_text = f"I received: '{msg.text}' in room '{room.title}'"
+                    # --- Reply Logic (ADK Agent if ready, else echo) ---
+                    if agent_ready:
+                        user_id = msg.personId
+                        session_id = f"{room.id}:{msg.personId}"
+                        reply_text = get_agent_response(msg.text, user_id=user_id, session_id=session_id)
+                    else:
+                        reply_text = f"I received: '{msg.text}' in room '{room.title}'"
+
                     print(f"Replying: {reply_text}")
                     
                     # Send Reply
                     api.messages.create(roomId=room.id, text=reply_text)
                     print("Reply sent successfully.\n")
+
+            # After first sweep, enable replies
+            if first_run:
+                first_run = False
 
             time.sleep(poll_interval)
 
