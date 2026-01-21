@@ -47,3 +47,36 @@ Este esqueleto permite conectar un bot de Webex con un agente de Google ADK de f
 - Cambia el backend de sesiones implementando otra clase con la misma interfaz de `PersistentInMemorySessionService` y registrándola en `make_session_service`.
 - Ajusta la estrategia de IDs de sesión en `webex_bot.py` si necesitas un hilo de conversación diferente (p. ej., por sala en vez de usuario+sala).
 
+## FAQ de integración y despliegue
+1) ¿Cómo “instalarlo” como submódulo/template?
+   - Opción submódulo git:  
+     ```bash
+     git submodule add https://github.com/fnrivarola95/webex_python --branch skeleton/adk-webex-template webex_adk_skeleton
+     ```  
+     Luego importas `webex_adk_skeleton/adk_agent` y `run_bot.py` o copias los archivos necesarios.
+   - Opción template/copia: clona la rama `skeleton/adk-webex-template` y copia `adk_agent/`, `run_bot.py`, `SKELETON.md` a tu repo. Ajusta `requirements.txt` y `.env`.
+
+2) Ejemplo de sesión personalizada
+   - Si quieres un backend Redis, implementa un servicio con la misma interfaz que `PersistentInMemorySessionService`:
+     ```python
+     class RedisSessionService:
+         def __init__(self, redis_client, app_name): ...
+         async def get_session(...): ...
+         async def create_session(...): ...
+         async def delete_session(...): ...
+         def list_sessions_sync(...): ...
+     def make_session_service(store_path, app_name):
+         return RedisSessionService(redis_client, app_name)
+     ```
+   - O cambia el esquema de IDs en `webex_bot.py`: `session_id = room.id` si quieres una sola conversación por sala, o `session_id = f"{room.id}:{thread_id}"` si Webex provee hilo.
+
+3) Manejo de errores y rate limits (Webex/ADK)
+   - Webex: el SDK puede lanzar `ApiError` por rate limit (429). Captura y espera antes de reintentar (p. ej., `time.sleep(retry_after)` si viene en headers).
+   - ADK/Google API: maneja `ClientError` o excepciones de red; añade reintentos con backoff y corta la respuesta si el modelo devuelve error. Útil para producción para no saturar ni caer por picos.
+   - Logs: limita la verbosidad en prod (INFO o WARN) y evita loguear tokens/PII.
+
+4) Escalar a varias réplicas (backend compartido)
+   - Necesitas un store de sesiones compartido (Redis/Memcached/DB) para que todas las réplicas vean el mismo estado. Ajusta `make_session_service` a ese backend.
+   - Usa un mecanismo de lock/TTL para evitar conflictos si varias instancias procesan el mismo mensaje.
+   - Revisa rate limits de Webex: con más réplicas puedes aumentar RPS; usa colas o throttling si es necesario.
+
