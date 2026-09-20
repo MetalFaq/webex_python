@@ -2,10 +2,23 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+
+# Virtual Environments
+pywebex/
+venv/
+.venv/
+env/
+ENV/
 
 # Environment variables (Critical for security)
 .env
-.env.local
+.env.*
+!.env.example
+
+# Runtime session and log files
+session_store.json
+*.log
 
 # IDE
 .vscode/
